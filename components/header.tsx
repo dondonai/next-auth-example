@@ -1,13 +1,51 @@
 import Link from "next/link"
-import { signIn, signOut, useSession } from "next-auth/react"
+import { signIn, signOut } from "next-auth/react"
 import styles from "./header.module.css"
+import * as Realm from "realm-web"
+import { useSession } from "../lib/@react-query"
+import { useCallback, useEffect, useState } from "react"
 
 // The approach used in this component shows how to build a sign in and sign out
 // component that works on pages which support both client and server side
 // rendering, and avoids any flash incorrect content on initial page load.
 export default function Header() {
-  const { data: session, status } = useSession()
-  const loading = status === "loading"
+  // const { data: session, status } = useSession()
+  const [session, isLoading] = useSession()
+  const idToken = session?.idToken
+  const [loggedUser, setLoggedUser] =
+    useState<
+      Realm.User<
+        globalThis.Realm.DefaultFunctionsFactory &
+          globalThis.Realm.BaseFunctionsFactory,
+        SimpleObject,
+        globalThis.Realm.DefaultUserProfileData
+      >
+    >()
+
+  const app = new Realm.App({ id: process.env.NEXT_PUBLIC_REALM_APP_ID })
+
+  const realmLogin = useCallback(async (idToken: string) => {
+    console.log("realm login")
+    console.log({ idToken })
+    const credentials = Realm.Credentials.jwt(idToken)
+    try {
+      const user = await app.logIn(credentials)
+      console.log(user.id === app.currentUser?.id)
+      setLoggedUser(user)
+      return user
+    } catch (error) {
+      console.log(`Failed to login with error: ${error}`)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (session && !loggedUser) {
+      const idToken = session.idToken
+      // console.log({ idToken })
+      // console.log(idToken)
+      if (idToken) realmLogin(idToken)
+    }
+  }, [session])
 
   return (
     <header>
@@ -17,7 +55,7 @@ export default function Header() {
       <div className={styles.signedInStatus}>
         <p
           className={`nojs-show ${
-            !session && loading ? styles.loading : styles.loaded
+            !session && isLoading ? styles.loading : styles.loaded
           }`}
         >
           {!session && (
